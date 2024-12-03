@@ -11,7 +11,7 @@
 
 # Use the official lightweight Python image.
 # https://hub.docker.com/_/python
-FROM python:3.9.19
+FROM python:3.6
 
 # Allow statements and log messages to immediately appear in the Cloud Run logs
 ENV PYTHONUNBUFFERED 1
