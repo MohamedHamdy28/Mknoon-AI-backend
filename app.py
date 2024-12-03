@@ -33,6 +33,10 @@ def hello() -> str:
 
     return "Hello, World!"
 
+@app.route("/sayhimo")
+def hello() -> str:
+
+    return "hi mo"
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
     logger.info(f"Caught Signal {signal.strsignal(signal_int)}")
