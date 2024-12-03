@@ -20,8 +20,80 @@ from flask import Flask
 
 from utils.logging import logger
 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+# import some_ml_library  # Replace with TensorFlow, PyTorch, etc., as needed
+import torchxrayvision as xrv
+import skimage, torch, torchvision
+from fracture import Fracture
+from matplotlib.colors import TABLEAU_COLORS
+import copy
+
+from cxray_from_mknoon.util import classify
+from cxray_from_mknoon.classifier import model as cxray_model
+
+def get_detailed_prediction(img):
+    """
+        This model will return the probability of having 14 different pathologies
+    """
+    # img = skimage.io.imread(files)
+    
+    # Check if the image has 3 channels; if so, convert it to grayscale
+    if img.ndim == 3 and img.shape[2] == 3:
+        img = img.mean(axis=2)  # Average across RGB channels to convert to grayscale
+    
+    # Ensure image is in the required range
+    img = xrv.datasets.normalize(img, 255)  # Convert 8-bit image to range [-1024, 1024]
+    img = img[None, ...]  # Add a channel dimension for single color channel
+
+    transform = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(),xrv.datasets.XRayResizer(224)])
+
+    img = transform(img)
+    img = torch.from_numpy(img)
+
+    # Load model and process image
+    outputs = chest_model(img[None,...]) # or model.features(img[None,...]) 
+
+    # Convert outputs to standard Python types for JSON serialization
+    results = {pathology: float(score) for pathology, score in zip(chest_model.pathologies, outputs[0].detach().cpu().numpy())}
+    
+    return results
+
+def get_prediction_from_mknoon(file):
+    cxray_model.load_weights("cxray_from_mknoon/pneumonia_classification_v3.h5")
+
+    # load class names
+    with open('cxray_from_mknoon/labels.txt', 'r') as f:
+        class_names = [a[:-1].split(' ')[1] for a in f.readlines()]
+        f.close()
+    img = skimage.io.imread(file)
+    img_copy = copy.deepcopy(img)
+    # # Check if the image has 3 channels; if so, convert it to grayscale
+    # if img.ndim == 3 and img.shape[2] == 3:
+    #     img = img.mean(axis=2)  # Average across RGB channels to convert to grayscale
+    
+    # # Ensure image is in the required range
+    # img = xrv.datasets.normalize(img, 255)  # Convert 8-bit image to range [-1024, 1024]
+    # img = img[None, ...]  # Add a channel dimension for single color channel
+    print(img.shape)
+    # cv2.imshow("Output Image", img)
+    # cv2.waitKey(0)
+    class_name, conf_score = classify(img, cxray_model, class_names)
+    print("Conf: ",conf_score)
+    result = str(class_name).lower()
+    print("result", result)
+    if result == "normal":
+        return [result]
+    else:
+        return [result, get_detailed_prediction(img_copy)]
+    
+
+
 app = Flask(__name__)
 
+#loading the models
+chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
+fracture_model = Fracture()
 
 @app.route("/")
 def hello() -> str:
@@ -33,10 +105,96 @@ def hello() -> str:
 
     return "Hello, World!"
 
-@app.route("/sayhimo")
-def hello() -> str:
+@app.route('/chestXray', methods=['POST'])
+def classify_chestxray():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-    return "hi mo"
+    file = request.files['file']
+    
+    # Check MIME type
+    if not file.mimetype.startswith('image/'):
+        return jsonify({"error": "Uploaded file is not an image"}), 400
+    
+    # Process the image if MIME type is valid
+    try:
+        # result = get_prediction(file, chest_model)
+        result = get_prediction_from_mknoon(file)
+    except Exception as e:
+        print("Error during prediction:", e)
+        return jsonify({'error': "Server could not deal with your file", 'details': str(e)}), 500
+
+    return jsonify({"prediction": result}), 200
+
+@app.route('/elbow', methods=['POST'])
+def classify_elbow():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    
+    # Check MIME type
+    if not file.mimetype.startswith('image/'):
+        return jsonify({"error": "Uploaded file is not an image"}), 400
+    
+    try:
+        # Read the image in a way that the model can process it
+        from io import BytesIO
+        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
+        result = fracture_model.predict(img_stream, "Elbow")
+        print(result)
+    except Exception as e:
+        print("Error during prediction:", e)
+        return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
+
+    return jsonify({"prediction": result}), 200
+
+@app.route('/hand', methods=['POST'])
+def classify_hand():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    
+    # Check MIME type
+    if not file.mimetype.startswith('image/'):
+        return jsonify({"error": "Uploaded file is not an image"}), 400
+    
+    try:
+        # Read the image in a way that the model can process it
+        from io import BytesIO
+        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
+        result = fracture_model.predict(img_stream, "Hand")
+        print(result)
+    except Exception as e:
+        print("Error during prediction:", e)
+        return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
+
+    return jsonify({"prediction": result}), 200
+
+@app.route('/shoulder', methods=['POST'])
+def classify_shoulder():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    
+    # Check MIME type
+    if not file.mimetype.startswith('image/'):
+        return jsonify({"error": "Uploaded file is not an image"}), 400
+    
+    try:
+        # Read the image in a way that the model can process it
+        from io import BytesIO
+        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
+        result = fracture_model.predict(img_stream, "Shoulder")
+        print(result)
+    except Exception as e:
+        print("Error during prediction:", e)
+        return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
+
+    return jsonify({"prediction": result}), 200
+
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
     logger.info(f"Caught Signal {signal.strsignal(signal_int)}")
