@@ -45,4 +45,4 @@ EXPOSE 8080
 # RUN echo "Setting up Gunicorn to run the web service..."
 
 # Run the web service on container startup
-CMD ["flask", "run", "--host=0.0.0.0", "--port=8080", "--debug"]
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app

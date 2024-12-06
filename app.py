@@ -91,6 +91,7 @@ def get_prediction_from_mknoon(file):
 
 
 app = Flask(__name__)
+CORS(app)
 
 #loading the models
 chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
