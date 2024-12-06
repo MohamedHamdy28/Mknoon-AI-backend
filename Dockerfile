@@ -1,6 +1,6 @@
 # Copyright 2021 Google LLC
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# You may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #      http://www.apache.org/licenses/LICENSE-2.0
 # Unless required by applicable law or agreed to in writing, software
@@ -11,27 +11,38 @@
 
 # Use the official lightweight Python image.
 # https://hub.docker.com/_/python
-FROM python:3.10.6
+FROM python:3.9.19-slim
 
 # Allow statements and log messages to immediately appear in the Cloud Run logs
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
-# Create and change to the app directory.
+# Create and change to the app directory
 WORKDIR /usr/src/app
 
-# Copy application dependency manifests to the container image.
-# Copying this separately prevents re-running pip install on every code change.
+# Install system dependencies, including libgl1 for OpenCV
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install\
+    libgl1\
+    libgl1-mesa-glx \ 
+    libglib2.0-0 -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy application dependency manifests to the container image
 COPY requirements.txt ./
 
-# Install dependencies.
-RUN pip install -r requirements.txt
+# Inform about starting dependency installation
+RUN echo "Installing Python dependencies..." && \
+    pip install --progress-bar=on --verbose -r requirements.txt
 
-# Copy local code to the container image.
+# Copy local code to the container image
+RUN echo "Copying application files to the container..."
 COPY . ./
 
-# Run the web service on container startup.
-# Use gunicorn webserver with one worker process and 8 threads.
-# For environments with multiple CPU cores, increase the number of workers
-# to be equal to the cores available.
-# Timeout is set to 0 to disable the timeouts of the workers to allow Cloud Run to handle instance scaling.
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+ENV FLASK_APP=app.py
+
+EXPOSE 8080
+
+# Inform about app startup
+# RUN echo "Setting up Gunicorn to run the web service..."
+
+# Run the web service on container startup
+CMD ["flask", "run", "--host=0.0.0.0", "--port=8080", "--debug"]

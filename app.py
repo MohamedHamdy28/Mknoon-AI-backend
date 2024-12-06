@@ -28,6 +28,7 @@ import skimage, torch, torchvision
 from fracture import Fracture
 from matplotlib.colors import TABLEAU_COLORS
 import copy
+import os
 
 from cxray_from_mknoon.util import classify
 from cxray_from_mknoon.classifier import model as cxray_model
@@ -213,7 +214,7 @@ if __name__ == "__main__":
     # handles Ctrl-C termination
     signal.signal(signal.SIGINT, shutdown_handler)
 
-    app.run(host="localhost", port=8080, debug=True)
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 else:
     # handles Cloud Run container termination
     signal.signal(signal.SIGTERM, shutdown_handler)
