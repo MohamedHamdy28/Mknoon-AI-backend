@@ -18,7 +18,6 @@ from types import FrameType
 
 from flask import Flask
 
-from utils.logging import logger
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -100,11 +99,6 @@ fracture_model = Fracture()
 
 @app.route("/")
 def hello() -> str:
-    # Use basic logging with custom fields
-    logger.info(logField="custom-entry", arbitraryField="custom-entry")
-
-    # https://cloud.google.com/run/docs/logging#correlate-logs
-    logger.info("Child logger with trace Id.")
 
     return "Hello, World!"
 
@@ -203,7 +197,6 @@ def classify_shoulder():
 
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
-    logger.info(f"Caught Signal {signal.strsignal(signal_int)}")
 
     from utils.logging import flush
 
