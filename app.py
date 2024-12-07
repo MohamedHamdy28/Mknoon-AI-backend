@@ -84,9 +84,10 @@ def get_prediction_from_mknoon(file):
     result = str(class_name).lower()
     print("result", result)
     if result == "normal":
-        return [result]
+        return {"status": "normal", "details": None}
     else:
-        return [result, get_detailed_prediction(img_copy)]
+        detailed_prediction = get_detailed_prediction(img_copy)
+        return {"status": "abnormal", "details": detailed_prediction}
     
 
 
@@ -144,6 +145,7 @@ def classify_elbow():
         from io import BytesIO
         img_stream = BytesIO(file.read())  # Convert uploaded file to stream
         result = fracture_model.predict(img_stream, "Elbow")
+        result = {"status": result, "details": None}
         print(result)
     except Exception as e:
         print("Error during prediction:", e)
@@ -167,6 +169,7 @@ def classify_hand():
         from io import BytesIO
         img_stream = BytesIO(file.read())  # Convert uploaded file to stream
         result = fracture_model.predict(img_stream, "Hand")
+        result = {"status": result, "details": None}
         print(result)
     except Exception as e:
         print("Error during prediction:", e)
@@ -190,6 +193,7 @@ def classify_shoulder():
         from io import BytesIO
         img_stream = BytesIO(file.read())  # Convert uploaded file to stream
         result = fracture_model.predict(img_stream, "Shoulder")
+        result = {"status": result, "details": None}
         print(result)
     except Exception as e:
         print("Error during prediction:", e)
