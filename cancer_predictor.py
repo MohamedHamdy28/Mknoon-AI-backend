@@ -36,10 +36,8 @@ def get_2views_model(model, model_file, device):
 
 def load_model(network, topology):
     """ load model structure and device """
-    if (DEVICE == "gpu") and torch.has_cudnn:
-        device = torch.device("cuda:{}".format(gpu_number))
-    else:
-        device = torch.device("cpu")
+
+    device = torch.device("cpu")
     if topology == 'side_mid_clf':
         model = SideMIDBreastModel(device, network, TOP_LAYER_N_BLOCKS,
                                    b_type=TOP_LAYER_BLOCK_TYPE, avg_pool=USE_AVG_POOL,
@@ -115,28 +113,17 @@ def translation_aug(image_cc, image_mlo, model, device, type=None):
 
 
 # <<<<<<<<<<<<<<<<<< main <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-def main():
+def cancer_prediction(image1, image2):
 
     ap = argparse.ArgumentParser(description='[Poli-USP] Two Views Breast Cancer inference')
-    ap.add_argument("-c", "--cc", required=True, help="CC image file.")
-    ap.add_argument("-m", "--mlo", required=True, help="MLO image file.")
     ap.add_argument("-d", "--model", help="two-views detector model")
     ap.add_argument("-a", "--aug", help="select to use translation augmentation: -a true")
 
     args = vars(ap.parse_args())
 
-    file_cc = args['cc']
-    file_mlo = args['mlo']
-
-    if args['model']:
-        model_file = args['model']
-    else:
-        model_file = 'models_side_mid_clf_efficientnet-b0/2021-08-03-03h54m_100ep_1074n_last_model_BEST.pt'
+    model_file = 'models_side_mid_clf_efficientnet-b0/2021-08-03-03h54m_100ep_1074n_last_model_BEST.pt'
 
     use_aug = False
-    if args['aug']:
-        if args['aug'].lower() == 'true':
-            use_aug = True
 
     print(f'\n--> {NETWORK} {TOPOLOGY} \n')
 
@@ -145,27 +132,21 @@ def main():
     # now overwirte the original model with 2-views-pre-trained for test
     model = get_2views_model(model, model_file, device)
 
-    image = cv2.imread(file_cc, cv2.IMREAD_UNCHANGED)
-    # image = cv2.resize(image, (896, 1152))
-    image_cc = np.zeros((*image.shape[0:2], 3), dtype=np.uint16)
+    image = cv2.resize(image1, (896, 1152))
+    image_cc = np.zeros((*image1.shape[0:2], 3), dtype=np.uint16)
     image_cc[:, :, 0] = image
     image_cc[:, :, 1] = image
     image_cc[:, :, 2] = image
 
-    image = cv2.imread(file_mlo, cv2.IMREAD_UNCHANGED)
-    # image = cv2.resize(image, (896, 1152))
-    image_mlo = np.zeros((*image.shape[0:2], 3), dtype=np.uint16)
+    image = cv2.resize(image2, (896, 1152))
+    image_mlo = np.zeros((*image2.shape[0:2], 3), dtype=np.uint16)
     image_mlo[:, :, 0] = image
     image_mlo[:, :, 1] = image
     image_mlo[:, :, 2] = image
 
     if not use_aug:
         tta_predictions = simple_prediction(image_cc, image_mlo, model, device)
-    else:
-        tta_predictions = translation_aug(image_cc, image_mlo, model, device)
     pred = np.mean(tta_predictions)
 
-    print(f'\nPrediction: {pred:.4f}')
+    return pred
 
-if __name__ == '__main__':
-    main()

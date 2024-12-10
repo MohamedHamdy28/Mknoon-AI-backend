@@ -29,6 +29,8 @@ from matplotlib.colors import TABLEAU_COLORS
 import copy
 import os
 
+
+from cancer_predictor import cancer_prediction
 from cxray_from_mknoon.util import classify
 from cxray_from_mknoon.classifier import model as cxray_model
 
@@ -88,8 +90,16 @@ def get_prediction_from_mknoon(file):
         detailed_prediction = get_detailed_prediction(img_copy)
         return {"status": "abnormal", "details": detailed_prediction}
     
-def get_cancer_prediction():
-    return "benign"
+def get_cancer_prediction(image1, image2):
+    # Load the two images
+    img1 = skimage.io.imread(image1)
+    img2 = skimage.io.imread(image2)
+    pred = cancer_prediction(img1, img2)
+    print(pred)
+    if pred > 0.5:
+        return ["malignant"]
+    else:
+        return ["benign"]
 
 
 app = Flask(__name__)
@@ -199,13 +209,12 @@ def classify_shoulder():
 
 @app.route('/cancer', methods=['POST'])
 def classify_cancer():
+    print(request.files)
     # Check if both images are provided
-    if 'image1' not in request.files or 'image2' not in request.files:
+    if 'file1' not in request.files or 'file2' not in request.files:
         return jsonify({"error": "Two image files are required"}), 400
-
-    image1 = request.files['image1']
-    image2 = request.files['image2']
-    
+    image1 = request.files['file1']
+    image2 = request.files['file2']
     # Check MIME type for both images
     if not image1.mimetype.startswith('image/') or not image2.mimetype.startswith('image/'):
         return jsonify({"error": "Both uploaded files must be images"}), 400
@@ -219,7 +228,6 @@ def classify_cancer():
 
     # Return the prediction result
     return jsonify({"prediction": result}), 200
-
 
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
