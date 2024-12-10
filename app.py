@@ -18,7 +18,6 @@ from types import FrameType
 
 from flask import Flask
 
-from utils.logging import logger
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -89,6 +88,8 @@ def get_prediction_from_mknoon(file):
         detailed_prediction = get_detailed_prediction(img_copy)
         return {"status": "abnormal", "details": detailed_prediction}
     
+def get_cancer_prediction():
+    return "benign"
 
 
 app = Flask(__name__)
@@ -100,11 +101,6 @@ fracture_model = Fracture()
 
 @app.route("/")
 def hello() -> str:
-    # Use basic logging with custom fields
-    logger.info(logField="custom-entry", arbitraryField="custom-entry")
-
-    # https://cloud.google.com/run/docs/logging#correlate-logs
-    logger.info("Child logger with trace Id.")
 
     return "Hello, World!"
 
@@ -201,9 +197,32 @@ def classify_shoulder():
 
     return jsonify({"prediction": result}), 200
 
+@app.route('/cancer', methods=['POST'])
+def classify_cancer():
+    # Check if both images are provided
+    if 'image1' not in request.files or 'image2' not in request.files:
+        return jsonify({"error": "Two image files are required"}), 400
+
+    image1 = request.files['image1']
+    image2 = request.files['image2']
+    
+    # Check MIME type for both images
+    if not image1.mimetype.startswith('image/') or not image2.mimetype.startswith('image/'):
+        return jsonify({"error": "Both uploaded files must be images"}), 400
+    
+    try:
+        # Pass the images to the cancer prediction function
+        result = get_cancer_prediction(image1, image2)
+    except Exception as e:
+        print("Error during cancer prediction:", e)
+        return jsonify({'error': "Server could not process the images", 'details': str(e)}), 500
+
+    # Return the prediction result
+    return jsonify({"prediction": result}), 200
+
+
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
-    logger.info(f"Caught Signal {signal.strsignal(signal_int)}")
 
     from utils.logging import flush
 

@@ -15,6 +15,7 @@
 # A gitignore file specifies intentionally untracked files that Git should ignore.
 
 # Exclude locally installed dependencies
+models_side_mid_clf_efficientnet-b0/
 venv/
 __pycache__/
 
@@ -27,3 +28,6 @@ __pycache__/
 
 # macOS
 **/.DS_Store
+models_side_mid_clf_efficientnet-b0/2021-08-03-03h54m_100ep_1074n_last_model_BEST.pt
+models_full_efficientnet_b0/2021-07-27-15h07m_50ep_2456n_last_model_Best.pt
+models_patch_efficientnet_b0/2021-07-27-09h49m_30ep_57280n_best_model_ACC_07872_best.pt
