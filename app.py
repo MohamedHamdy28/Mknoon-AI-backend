@@ -135,8 +135,8 @@ def classify_chestxray():
 
     return jsonify({"prediction": result}), 200
 
-@app.route('/elbow', methods=['POST'])
-def classify_elbow():
+@app.route('/fracture', methods=['POST'])
+def classify_fracture():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
@@ -150,55 +150,7 @@ def classify_elbow():
         # Read the image in a way that the model can process it
         from io import BytesIO
         img_stream = BytesIO(file.read())  # Convert uploaded file to stream
-        result = fracture_model.predict(img_stream, "Elbow")
-        result = {"status": result, "details": None}
-        print(result)
-    except Exception as e:
-        print("Error during prediction:", e)
-        return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
-
-    return jsonify({"prediction": result}), 200
-
-@app.route('/hand', methods=['POST'])
-def classify_hand():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files['file']
-    
-    # Check MIME type
-    if not file.mimetype.startswith('image/'):
-        return jsonify({"error": "Uploaded file is not an image"}), 400
-    
-    try:
-        # Read the image in a way that the model can process it
-        from io import BytesIO
-        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
-        result = fracture_model.predict(img_stream, "Hand")
-        result = {"status": result, "details": None}
-        print(result)
-    except Exception as e:
-        print("Error during prediction:", e)
-        return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
-
-    return jsonify({"prediction": result}), 200
-
-@app.route('/shoulder', methods=['POST'])
-def classify_shoulder():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files['file']
-    
-    # Check MIME type
-    if not file.mimetype.startswith('image/'):
-        return jsonify({"error": "Uploaded file is not an image"}), 400
-    
-    try:
-        # Read the image in a way that the model can process it
-        from io import BytesIO
-        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
-        result = fracture_model.predict(img_stream, "Shoulder")
+        result = fracture_model.predict(img_stream)
         result = {"status": result, "details": None}
         print(result)
     except Exception as e:

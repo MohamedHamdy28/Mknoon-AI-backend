@@ -16,36 +16,48 @@ class Fracture:
         #   0-fractured     1-normal
         self.categories_fracture = ['fractured', 'normal']
 
-    def predict(self, img, model="Parts"):
+    def predict(self, img):
         size = 224
-        if model == 'Parts':
-            chosen_model = self.model_parts
-        else:
-            if model == 'Elbow':
-                chosen_model = self.model_elbow_frac
-            elif model == 'Hand':
-                chosen_model = self.model_hand_frac
-            elif model == 'Shoulder':
-                chosen_model = self.model_shoulder_frac
 
-        # load image with 224px224p (the training model image size, rgb)
+        # Step 1: Use the model_parts model to determine the body part
         temp_img = image.load_img(img, target_size=(size, size))
         x = image.img_to_array(temp_img)
         x = np.expand_dims(x, axis=0)
         images = np.vstack([x])
-        prediction = np.argmax(chosen_model.predict(images), axis=1)
+        body_part_prediction = np.argmax(self.model_parts.predict(images), axis=1)
+        body_part = self.categories_parts[body_part_prediction.item()]  # Get the body part as a string
 
-        # chose the category and get the string prediction
-        if model == 'Parts':
-            prediction_str = self.categories_parts[prediction.item()]
+        # Step 2: Select the appropriate model based on the determined body part
+        if body_part == 'Elbow':
+            chosen_model = self.model_elbow_frac
+        elif body_part == 'Hand':
+            chosen_model = self.model_hand_frac
+        elif body_part == 'Shoulder':
+            chosen_model = self.model_shoulder_frac
         else:
-            prediction_str = self.categories_fracture[prediction.item()]
+            raise ValueError(f"Unknown body part detected: {body_part}")
+
+        print("Predicted body part ", body_part)
+        # Step 3: Predict fracture status using the chosen model
+        fracture_prediction = np.argmax(chosen_model.predict(images), axis=1)
+        prediction_str = self.categories_fracture[fracture_prediction.item()]  # Get the prediction as a string
 
         return prediction_str
+
     
 
 if __name__ == '__main__':
+    # Instantiate the Fracture class
     fracture = Fracture()
-    img_path = "../test data/fracture/elbow/negative/image4.png"
-    print(fracture.predict(img_path, "Elbow"))
+
+    # Path to the test image
+    img_path = r"D:\Work\test data\fracture\elbow\normal\elbow3.jpg"
+
+    # Call the predict function and print the result
+    try:
+        result = fracture.predict(img_path)
+        print(f"Prediction for the image '{img_path}': {result}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
     
