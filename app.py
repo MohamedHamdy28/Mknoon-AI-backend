@@ -1,117 +1,155 @@
 # Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# ...
+# ...
+# We'll skip the license boilerplate here for brevity.
 
 import signal
 import sys
 from types import FrameType
-
-from flask import Flask
-
+import os
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-# import some_ml_library  # Replace with TensorFlow, PyTorch, etc., as needed
+
 import torchxrayvision as xrv
 import skimage, torch, torchvision
-from fracture import Fracture
 from matplotlib.colors import TABLEAU_COLORS
 import copy
-import os
 
-
+from fracture import Fracture
 from cancer_predictor import cancer_prediction
 from cxray_from_mknoon.util import classify
 from cxray_from_mknoon.classifier import model as cxray_model
 
+# For reading DICOM
+import pydicom
+import numpy as np
+from io import BytesIO
+
+app = Flask(__name__)
+CORS(app)
+
+# loading the models once at startup
+chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
+fracture_model = Fracture()
+
+def shutdown_handler(signal_int: int, frame: FrameType) -> None:
+    # Clean up logs or resources if needed
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, shutdown_handler)
+signal.signal(signal.SIGTERM, shutdown_handler)
+
+###################################
+# 1) UTILITY: READ IMAGE OR DICOM
+###################################
+def read_image_or_dicom(file_storage):
+    """
+    Checks if the uploaded file is a .dcm (DICOM) or a standard image.
+    Returns a NumPy array of pixel data.
+    """
+    filename = file_storage.filename.lower()
+    
+    # If the file is .dcm, we parse as DICOM
+    if filename.endswith('.dcm'):
+        ds = pydicom.dcmread(file_storage)  # read DICOM directly
+        pixel_array = ds.pixel_array
+        # Convert to a standard float32 range if needed
+        # e.g., pixel_array = pixel_array.astype('float32')
+        # display the image
+        # import cv2
+        # cv2.imshow('DICOM Image', pixel_array)
+        # cv2.waitKey(0)
+        return pixel_array
+    else:
+        # Otherwise, treat as normal image. We'll read from memory.
+        # But we need to read the bytes and pass to skimage
+        image_data = BytesIO(file_storage.read())
+        img = skimage.io.imread(image_data)
+        return img
+
+###################################
+# 2) DETAILED CXR PREDICTION
+###################################
 def get_detailed_prediction(img):
     """
-        This model will return the probability of having 14 different pathologies
+    This model returns the probability of having 14 different pathologies
+    using TorchXRayVision's DenseNet.
     """
-    # img = skimage.io.imread(files)
-    
-    # Check if the image has 3 channels; if so, convert it to grayscale
+    # If the image has 3 channels (RGB), convert to grayscale
     if img.ndim == 3 and img.shape[2] == 3:
-        img = img.mean(axis=2)  # Average across RGB channels to convert to grayscale
-    
-    # Ensure image is in the required range
-    img = xrv.datasets.normalize(img, 255)  # Convert 8-bit image to range [-1024, 1024]
+        img = img.mean(axis=2)
+
+    # Normalize to the range [-1024, 1024]
+    img = xrv.datasets.normalize(img, 255)
     img = img[None, ...]  # Add a channel dimension for single color channel
 
-    transform = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(),xrv.datasets.XRayResizer(224)])
+    transform = torchvision.transforms.Compose([
+        xrv.datasets.XRayCenterCrop(),
+        xrv.datasets.XRayResizer(224)
+    ])
 
     img = transform(img)
     img = torch.from_numpy(img)
 
-    # Load model and process image
-    outputs = chest_model(img[None,...]) # or model.features(img[None,...]) 
+    outputs = chest_model(img[None, ...])
+    # Convert outputs to standard Python types for JSON
+    pathologies = chest_model.pathologies
+    scores = outputs[0].detach().cpu().numpy()
+    results = {p: float(s) for p, s in zip(pathologies, scores)}
 
-    # Convert outputs to standard Python types for JSON serialization
-    results = {pathology: float(score) for pathology, score in zip(chest_model.pathologies, outputs[0].detach().cpu().numpy())}
-    
     return results
 
-def get_prediction_from_mknoon(file):
+###################################
+# 3) CUSTOM CXR MODEL
+###################################
+def get_prediction_from_mknoon(file_storage):
+    """
+    Uses the pneumonia_classification_v3 from Mknoon,
+    plus DenseNet for more details if abnormal.
+    """
     cxray_model.load_weights("cxray_from_mknoon/pneumonia_classification_v3.h5")
 
-    # load class names
     with open('cxray_from_mknoon/labels.txt', 'r') as f:
-        class_names = [a[:-1].split(' ')[1] for a in f.readlines()]
-        f.close()
-    img = skimage.io.imread(file)
+        class_names = [line.strip().split(' ')[1] for line in f]
+
+    # read as image or DICOM
+    img = read_image_or_dicom(file_storage)
     img_copy = copy.deepcopy(img)
-    # # Check if the image has 3 channels; if so, convert it to grayscale
-    # if img.ndim == 3 and img.shape[2] == 3:
-    #     img = img.mean(axis=2)  # Average across RGB channels to convert to grayscale
-    
-    # # Ensure image is in the required range
-    # img = xrv.datasets.normalize(img, 255)  # Convert 8-bit image to range [-1024, 1024]
-    # img = img[None, ...]  # Add a channel dimension for single color channel
-    print(img.shape)
-    # cv2.imshow("Output Image", img)
-    # cv2.waitKey(0)
+
     class_name, conf_score = classify(img, cxray_model, class_names)
-    print("Conf: ",conf_score)
     result = str(class_name).lower()
-    print("result", result)
+
     if result == "normal":
         return {"status": "normal", "details": None}
     else:
         detailed_prediction = get_detailed_prediction(img_copy)
         return {"status": "abnormal", "details": detailed_prediction}
-    
-def get_cancer_prediction(image1, image2):
-    # Load the two images
-    img1 = skimage.io.imread(image1)
-    img2 = skimage.io.imread(image2)
-    pred = cancer_prediction(img1, img2)
-    print(pred)
-    if pred > 0.5:
+
+###################################
+# 4) CANCER PREDICTION
+###################################
+def get_cancer_prediction(file1, file2):
+    """
+    Cancer predictor expects two images: CC, MLO
+    (or DICOM).
+    Returns: ["malignant"] or ["benign"]
+    """
+    img1 = read_image_or_dicom(file1)
+    img2 = read_image_or_dicom(file2)
+    pred_score = cancer_prediction(img1, img2)
+    if pred_score > 0.5:
         return ["malignant"]
     else:
         return ["benign"]
 
-
-app = Flask(__name__)
-CORS(app)
-
-#loading the models
-chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
-fracture_model = Fracture()
-
+###################################
+# FLASK ROUTES
+###################################
 @app.route("/")
 def hello() -> str:
-
     return "Hello, World!"
 
 @app.route('/chestXray', methods=['POST'])
@@ -119,19 +157,19 @@ def classify_chestxray():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files['file']
-    
-    # Check MIME type
-    if not file.mimetype.startswith('image/'):
-        return jsonify({"error": "Uploaded file is not an image"}), 400
-    
-    # Process the image if MIME type is valid
+    file_storage = request.files['file']
+    filename = file_storage.filename.lower()
+
+    # We handle either standard images or .dcm
+    if not (filename.endswith('.png') or filename.endswith('.jpg')
+            or filename.endswith('.jpeg') or filename.endswith('.dcm')):
+        return jsonify({"error": "File must be .png, .jpg, .jpeg, or .dcm"}), 400
+
     try:
-        # result = get_prediction(file, chest_model)
-        result = get_prediction_from_mknoon(file)
+        result = get_prediction_from_mknoon(file_storage)
     except Exception as e:
         print("Error during prediction:", e)
-        return jsonify({'error': "Server could not deal with your file", 'details': str(e)}), 500
+        return jsonify({'error': "Server could not handle your file", 'details': str(e)}), 500
 
     return jsonify({"prediction": result}), 200
 
@@ -140,19 +178,44 @@ def classify_fracture():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files['file']
-    
-    # Check MIME type
-    if not file.mimetype.startswith('image/'):
-        return jsonify({"error": "Uploaded file is not an image"}), 400
-    
+    file_storage = request.files['file']
+    filename = file_storage.filename.lower()
+
+    if not (filename.endswith('.png') or filename.endswith('.jpg')
+            or filename.endswith('.jpeg') or filename.endswith('.dcm')):
+        return jsonify({"error": "File must be .png, .jpg, .jpeg, or .dcm"}), 400
+
     try:
-        # Read the image in a way that the model can process it
         from io import BytesIO
-        img_stream = BytesIO(file.read())  # Convert uploaded file to stream
-        result = fracture_model.predict(img_stream)
-        result = {"status": result, "details": None}
-        print(result)
+        if filename.endswith('.dcm'):
+            # read as DICOM
+            img_data = read_image_or_dicom(file_storage)
+            # Convert to BytesIO in PNG format if your Fracture model expects standard images
+            # or adapt the "fracture_model" to accept arrays directly
+            # For example:
+            from PIL import Image
+            import cv2
+            import numpy as np
+
+            # Make sure the array is 8-bit
+            # If it's large range, scale it or cast
+            if img_data.dtype != np.uint8:
+                # normalize to 0-255
+                normalized = (img_data - img_data.min()) / (img_data.max() - img_data.min() + 1e-8)
+                img_data = (normalized * 255).astype(np.uint8)
+            
+            # Convert to PIL
+            pil_img = Image.fromarray(img_data)
+            temp_buffer = BytesIO()
+            pil_img.save(temp_buffer, format="PNG")
+            temp_buffer.seek(0)
+            result_label = fracture_model.predict(temp_buffer)
+        else:
+            # If it's a normal image
+            img_stream = BytesIO(file_storage.read())
+            result_label = fracture_model.predict(img_stream)
+
+        result = {"status": result_label, "details": None}
     except Exception as e:
         print("Error during prediction:", e)
         return jsonify({'error': "Server could not process your file", 'details': str(e)}), 500
@@ -161,44 +224,25 @@ def classify_fracture():
 
 @app.route('/cancer', methods=['POST'])
 def classify_cancer():
-    print(request.files)
-    # Check if both images are provided
     if 'file1' not in request.files or 'file2' not in request.files:
         return jsonify({"error": "Two image files are required"}), 400
-    image1 = request.files['file1']
-    image2 = request.files['file2']
-    # Check MIME type for both images
-    if not image1.mimetype.startswith('image/') or not image2.mimetype.startswith('image/'):
-        return jsonify({"error": "Both uploaded files must be images"}), 400
-    
+
+    file1 = request.files['file1']
+    file2 = request.files['file2']
+
+    # Check allowed extensions
+    allowed_exts = ('.png', '.jpg', '.jpeg', '.dcm')
+    if not file1.filename.lower().endswith(allowed_exts) or not file2.filename.lower().endswith(allowed_exts):
+        return jsonify({"error": "Both files must be .png, .jpg, .jpeg, or .dcm"}), 400
+
     try:
-        # Pass the images to the cancer prediction function
-        result = get_cancer_prediction(image1, image2)
+        result = get_cancer_prediction(file1, file2)
     except Exception as e:
         print("Error during cancer prediction:", e)
         return jsonify({'error': "Server could not process the images", 'details': str(e)}), 500
 
-    # Return the prediction result
     return jsonify({"prediction": result}), 200
 
-
-def shutdown_handler(signal_int: int, frame: FrameType) -> None:
-
-    from utils.logging import flush
-
-    flush()
-
-    # Safely exit program
-    sys.exit(0)
-
-
 if __name__ == "__main__":
-    # Running application locally, outside of a Google Cloud Environment
-
-    # handles Ctrl-C termination
-    signal.signal(signal.SIGINT, shutdown_handler)
-
+    # Running application locally
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-else:
-    # handles Cloud Run container termination
-    signal.signal(signal.SIGTERM, shutdown_handler)
