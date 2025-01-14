@@ -232,16 +232,37 @@ def classify_cancer():
 
     # Check allowed extensions
     allowed_exts = ('.png', '.jpg', '.jpeg', '.dcm')
-    if not file1.filename.lower().endswith(allowed_exts) or not file2.filename.lower().endswith(allowed_exts):
+    if (not file1.filename.lower().endswith(allowed_exts)
+        or not file2.filename.lower().endswith(allowed_exts)):
         return jsonify({"error": "Both files must be .png, .jpg, .jpeg, or .dcm"}), 400
 
     try:
+        # 1) Read the bytes for each file
+        data1 = file1.read()
+        data2 = file2.read()
+
+        # 2) If both byte sequences are identical, return an error
+        if data1 == data2:
+            return jsonify({
+                "error": "The two uploaded images are identical. "
+                         "Please upload two distinct images."
+            }), 400
+
+        # 3) Reset the file pointers so `get_cancer_prediction` can read them again
+        file1.seek(0)
+        file2.seek(0)
+
+        # 4) Proceed with your existing logic
         result = get_cancer_prediction(file1, file2)
     except Exception as e:
         print("Error during cancer prediction:", e)
-        return jsonify({'error': "Server could not process the images", 'details': str(e)}), 500
+        return jsonify({
+            'error': "Server could not process the images",
+            'details': str(e)
+        }), 500
 
     return jsonify({"prediction": result}), 200
+
 
 if __name__ == "__main__":
     # Running application locally
