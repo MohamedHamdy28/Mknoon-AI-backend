@@ -19,14 +19,17 @@ from matplotlib.colors import TABLEAU_COLORS
 import copy
 
 from fracture import Fracture
-from cancer_predictor import cancer_prediction
+from cancer_predictor import CancerPredictor
 from cxray_from_mknoon.util import classify
 from cxray_from_mknoon.classifier import model as cxray_model
+import base64
+from io import BytesIO
 
 # For reading DICOM
 import pydicom
 import numpy as np
 from io import BytesIO
+import cv2
 
 app = Flask(__name__)
 CORS(app)
@@ -34,6 +37,7 @@ CORS(app)
 # loading the models once at startup
 chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
 fracture_model = Fracture()
+cancer_prediction = CancerPredictor()
 
 def shutdown_handler(signal_int: int, frame: FrameType) -> None:
     # Clean up logs or resources if needed
@@ -131,19 +135,28 @@ def get_prediction_from_mknoon(file_storage):
 ###################################
 # 4) CANCER PREDICTION
 ###################################
+def encode_image_to_base64(image):
+    """ Convert an OpenCV/Numpy image to a base64-encoded string """
+    if image is None:
+        return None
+    _, buffer = cv2.imencode(".png", image)
+    return base64.b64encode(buffer).decode("utf-8")
+
 def get_cancer_prediction(file1, file2):
     """
-    Cancer predictor expects two images: CC, MLO
-    (or DICOM).
-    Returns: ["malignant"] or ["benign"]
+    Cancer predictor expects two images: CC, MLO (or DICOM).
+    Returns classification labels and bounding box images (if applicable) as base64 strings.
     """
     img1 = read_image_or_dicom(file1)
     img2 = read_image_or_dicom(file2)
-    pred_score = cancer_prediction(img1, img2)
-    if pred_score > 0.5:
-        return ["malignant"]
-    else:
-        return ["benign"]
+
+    result = cancer_prediction.cancer_prediction(img1, img2)
+
+    # Convert images to base64 for JSON serialization
+    result["image1_with_boxes"] = encode_image_to_base64(result["image1_with_boxes"])
+    result["image2_with_boxes"] = encode_image_to_base64(result["image2_with_boxes"])
+
+    return result
 
 ###################################
 # FLASK ROUTES
