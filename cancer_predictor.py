@@ -63,13 +63,23 @@ class CancerPredictor:
             cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         return image
     def cancer_prediction(self, image1, image2):
-        # check if the images are rgb or not and convert them to rgb
+        # Convert grayscale images to RGB if needed
         if len(image1.shape) == 2:
             image1 = cv2.cvtColor(image1, cv2.COLOR_GRAY2RGB)
         if len(image2.shape) == 2:
             image2 = cv2.cvtColor(image2, cv2.COLOR_GRAY2RGB)
+
+        # Convert to uint8 if not already
+        if image1.dtype != np.uint8:
+            image1 = (image1 / image1.max() * 255).astype(np.uint8)
+        if image2.dtype != np.uint8:
+            image2 = (image2 / image2.max() * 255).astype(np.uint8)
+
+        # Now create PIL images
         image1_pil = Image.fromarray(image1)
         image2_pil = Image.fromarray(image2)
+
+        # Continue with your processing…
         img1_transformed = self.val_transform(image1_pil).unsqueeze(0).to(device)
         img2_transformed = self.val_transform(image2_pil).unsqueeze(0).to(device)
         print(image1.shape, image2.shape)
