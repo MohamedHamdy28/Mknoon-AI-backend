@@ -138,6 +138,7 @@ def get_prediction_from_mknoon(file_storage):
 def encode_image_to_base64(image):
     """ Convert an OpenCV/Numpy image to a base64-encoded string """
     if image is None:
+        print("image is None")
         return None
     _, buffer = cv2.imencode(".png", image)
     return base64.b64encode(buffer).decode("utf-8")

@@ -39,7 +39,7 @@ class CancerPredictor:
         self.class_names = ["Benign", "Malignant", "Normal"]  # Update this based on your dataset
         print("Cancer Predictor initialized")
 
-    def extract_detection(self, image, detection_result):
+    def extract_detection(self, image, detection_result, classification_label):
         # Extract detections
         threshold = 0.25  # Confidence threshold
         boxes = detection_result[0].boxes.data.cpu().numpy()  # Extract bounding boxes
@@ -58,9 +58,9 @@ class CancerPredictor:
             y2 = int(h)
 
             # Draw bounding box
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"Tumor: {conf:.2f}"
-            cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 6)
+            label = f"{classification_label}: {conf:.2f}"
+            cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         return image
     def cancer_prediction(self, image1, image2):
         # Convert grayscale images to RGB if needed
@@ -97,16 +97,16 @@ class CancerPredictor:
             if classification_label1 != "Normal":
                 # Perform detection on the images
                 detection_output1 = self.detection_model(image1_pil)
-                image1_with_boxes = self.extract_detection(image1, detection_output1)
+                image1_with_boxes = self.extract_detection(image1, detection_output1, classification_label1)
             
             if classification_label2 != "Normal":
                 detection_output2 = self.detection_model(image2_pil)
-                image2_with_boxes = self.extract_detection(image2, detection_output2)
+                image2_with_boxes = self.extract_detection(image2, detection_output2, classification_label2)
         result = {
             "image1_label": classification_label1,
             "image2_label": classification_label2,
             "image1_with_boxes": image1_with_boxes,
-            "image2_with_boxes": image2_with_boxes
+            "image2_with_boxes": image2_with_boxes,
         }
         return result
             
