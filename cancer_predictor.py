@@ -9,11 +9,20 @@ import numpy as np
 
 num_classes = 3  
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from pathlib import Path
+
 
 class CancerPredictor:
     def __init__(self):
-        classification_path = "model\cancer\cancer_classification_vgg16.pt"
-        detection_path = "model\cancer\cancer_detection_YOLOv11.pt"
+        # Get the current script's directory
+        current_dir = Path(__file__).resolve().parent
+        # Build robust absolute paths
+        classification_path = current_dir / "model" / "cancer" / "cancer_classification_vgg16.pt"
+        detection_path = current_dir / "model" / "cancer" / "cancer_detection_YOLOv11.pt"
+
+        # If you need them as strings (for PyTorch for example)
+        classification_path = str(classification_path)
+        detection_path = str(detection_path)
 
         # Load classification model
         self.classification_model = models.vgg16(pretrained=False)

@@ -9,6 +9,7 @@ import signal
 import sys
 from types import FrameType
 import os
+from unittest import result
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -24,6 +25,7 @@ from cxray_from_mknoon.util import classify
 from cxray_from_mknoon.classifier import model as cxray_model
 import base64
 from io import BytesIO
+from chest_xray import TBClassifier
 
 # For reading DICOM
 import pydicom
@@ -35,7 +37,8 @@ app = Flask(__name__)
 CORS(app)
 
 # loading the models once at startup
-chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
+# chest_model = xrv.models.DenseNet(weights="densenet121-res224-all")
+chest_model = TBClassifier()
 fracture_model = Fracture()
 cancer_prediction = CancerPredictor()
 
@@ -52,27 +55,34 @@ signal.signal(signal.SIGTERM, shutdown_handler)
 def read_image_or_dicom(file_storage):
     """
     Checks if the uploaded file is a .dcm (DICOM) or a standard image.
-    Returns a NumPy array of pixel data.
+    Returns a 2D NumPy array (grayscale).
     """
+    # Read raw bytes once
+    data = file_storage.read()
+    # Reset stream position in case someone else reads it later
+    try:
+        file_storage.seek(0)
+    except Exception:
+        pass
+
     filename = file_storage.filename.lower()
-    
-    # If the file is .dcm, we parse as DICOM
+
     if filename.endswith('.dcm'):
-        ds = pydicom.dcmread(file_storage)  # read DICOM directly
-        pixel_array = ds.pixel_array
-        # Convert to a standard float32 range if needed
-        # e.g., pixel_array = pixel_array.astype('float32')
-        # display the image
-        # import cv2
-        # cv2.imshow('DICOM Image', pixel_array)
-        # cv2.waitKey(0)
-        return pixel_array
+        # DICOM: parse from the in-memory bytes
+        ds = pydicom.dcmread(BytesIO(data))
+        img = ds.pixel_array
     else:
-        # Otherwise, treat as normal image. We'll read from memory.
-        # But we need to read the bytes and pass to skimage
-        image_data = BytesIO(file_storage.read())
-        img = skimage.io.imread(image_data)
-        return img
+        # Standard image: load from bytes
+        img = skimage.io.imread(BytesIO(data))
+
+    # Ensure it’s a 2D grayscale image
+    if img.ndim > 2:
+        # convert RGB/BGR to gray
+        # skimage returns RGB; cv2.cvtColor expects BGR, but gray result is same
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # Force float32 for consistency downstream
+    return img.astype(np.float32)
 
 ###################################
 # 2) DETAILED CXR PREDICTION
@@ -132,6 +142,11 @@ def get_prediction_from_mknoon(file_storage):
         detailed_prediction = get_detailed_prediction(img_copy)
         return {"status": "abnormal", "details": detailed_prediction}
 
+def get_prediction_for_tb(file_storage):
+    img = read_image_or_dicom(file_storage)
+    result = chest_model.predict(img)
+    return {"status": result}
+
 ###################################
 # 4) CANCER PREDICTION
 ###################################
@@ -180,7 +195,7 @@ def classify_chestxray():
         return jsonify({"error": "File must be .png, .jpg, .jpeg, or .dcm"}), 400
 
     try:
-        result = get_prediction_from_mknoon(file_storage)
+        result = get_prediction_for_tb(file_storage)
     except Exception as e:
         print("Error during prediction:", e)
         return jsonify({'error': "Server could not handle your file", 'details': str(e)}), 500
